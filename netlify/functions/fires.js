@@ -1,6 +1,5 @@
 // Fetches active wildfires from NIFC, then cross-references each against
 // InciWeb's accessible incident table to find a real, working "Go to Incident" URL.
-// Falls back to a search link if no confident match is found.
 
 function normalize(str) {
   return (str || '')
@@ -11,44 +10,45 @@ function normalize(str) {
 }
 
 function parseInciWebTable(html) {
-  // The accessible-view page renders incidents as table rows with links like:
-  // <a href="/incident-information/xxxxx-yyyy-fire">Incident Name</a>
   const map = {};
-  const linkRegex = /<a[^>]+href="(\/incident-information\/[^"]+)"[^>]*>([^<]+)<\/a>/gi;
+  // Broader regex: allow any attributes before href, allow nested tags/whitespace in link text
+  const linkRegex = /<a[^>]*href="(\/incident-information\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
   let match;
+  let count = 0;
   while ((match = linkRegex.exec(html)) !== null) {
     const url = match[1];
-    const text = match[2].trim();
+    // Strip any nested HTML tags from the link text, collapse whitespace
+    const text = match[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     const key = normalize(text);
     if (key) {
       map[key] = url;
+      count++;
     }
   }
-  return map;
+  return { map: map, count: count, htmlLength: html.length };
 }
 
 async function fetchInciWebMap() {
   try {
-    const res = await fetch('https://inciweb.wildfire.gov/accessible-view');
-    if (!res.ok) return {};
+    const res = await fetch('https://inciweb.wildfire.gov/accessible-view', {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    if (!res.ok) return { map: {}, count: 0, status: res.status, htmlLength: 0 };
     const html = await res.text();
-    return parseInciWebTable(html);
+    const result = parseInciWebTable(html);
+    result.status = res.status;
+    return result;
   } catch (e) {
-    return {};
+    return { map: {}, count: 0, error: e.message, htmlLength: 0 };
   }
 }
 
 function findBestMatch(fireName, inciwebMap) {
   const normFire = normalize(fireName);
   if (!normFire) return null;
-
-  // Exact normalized match first
   if (inciwebMap[normFire]) return inciwebMap[normFire];
-
-  // Substring match (either direction) as fallback
   for (const key in inciwebMap) {
     if (key.includes(normFire) || normFire.includes(key)) {
-      // Avoid trivial matches on very short names
       if (normFire.length >= 4 && key.length >= 4) {
         return inciwebMap[key];
       }
@@ -57,29 +57,41 @@ function findBestMatch(fireName, inciwebMap) {
   return null;
 }
 
-exports.handler = async function() {
+exports.handler = async function(event) {
+  // Debug mode: ?debug=1 returns raw diagnostic info instead of fire data
+  const isDebug = event.queryStringParameters && event.queryStringParameters.debug;
+
+  const inciwebResult = await fetchInciWebMap();
+
+  if (isDebug) {
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({
+        inciwebStatus: inciwebResult.status,
+        inciwebHtmlLength: inciwebResult.htmlLength,
+        inciwebLinksFound: inciwebResult.count,
+        inciwebError: inciwebResult.error || null,
+        sampleKeys: Object.keys(inciwebResult.map).slice(0, 20),
+        sampleEntries: Object.entries(inciwebResult.map).slice(0, 10)
+      })
+    };
+  }
+
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const dateStr = sevenDaysAgo.toISOString().slice(0, 19).replace('T', ' ');
   const where = `IncidentTypeCategory='WF' AND ICS209ReportDateTime>timestamp '${dateStr}'`;
   const nifcUrl = 'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query?where=' + encodeURIComponent(where) + '&outFields=*&f=geojson';
 
   try {
-    const [nifcRes, inciwebMap] = await Promise.all([
-      fetch(nifcUrl),
-      fetchInciWebMap()
-    ]);
-
+    const nifcRes = await fetch(nifcUrl);
     const nifcData = await nifcRes.json();
 
     if (nifcData.features) {
       nifcData.features.forEach(function(f) {
         const name = f.properties && f.properties.IncidentName;
-        const matchedUrl = findBestMatch(name, inciwebMap);
-        if (matchedUrl) {
-          f.properties.InciWebUrl = 'https://inciweb.wildfire.gov' + matchedUrl;
-        } else {
-          f.properties.InciWebUrl = null;
-        }
+        const matchedUrl = findBestMatch(name, inciwebResult.map);
+        f.properties.InciWebUrl = matchedUrl ? 'https://inciweb.wildfire.gov' + matchedUrl : null;
       });
     }
 
