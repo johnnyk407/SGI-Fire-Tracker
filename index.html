@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MFSU Designated Dispatch Points — 2026 Fire Season</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background:#f5f4f0; color:#222; min-height:100vh; display:flex; flex-direction:column; }
+  header { background:#fff; border-bottom:1px solid #e0dfd8; padding:14px 20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+  header h1 { font-size:16px; font-weight:600; color:#1a1a1a; }
+  header p { font-size:12px; color:#888; margin-top:2px; }
+  #status-pill { font-size:12px; padding:4px 12px; border-radius:20px; background:#fef3e2; color:#92540a; border:1px solid #f5c77e; white-space:nowrap; }
+  #status-pill.loaded { background:#eaf3de; color:#3b6d11; border-color:#97c459; }
+  #status-pill.error { background:#FCEBEB; color:#A32D2D; border-color:#f09595; }
+  #map-wrap { position:relative; flex:1; display:flex; flex-direction:column; }
+  #map { flex:1; min-height:calc(100vh - 100px); width:100%; }
+  #legend { position:absolute; top:16px; right:16px; background:#fff; border:1px solid #ddd; border-radius:8px; padding:12px 16px; font-size:13px; z-index:1000; min-width:190px; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+  #legend h2 { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:#888; margin-bottom:10px; }
+  .legend-row { display:flex; align-items:center; gap:9px; margin-bottom:7px; font-size:13px; color:#444; }
+  .dot { width:13px; height:13px; border-radius:50%; flex-shrink:0; }
+  .dot-sgi { background:#D85A30; border:2px solid #993C1D; width:15px; height:15px; }
+  .dot-other { background:#185FA5; border:2px solid #0C447C; }
+  .dot-fire { background:#E24B4A; border:1px solid #A32D2D; opacity:0.8; }
+  #legend hr { border:none; border-top:1px solid #eee; margin:8px 0; }
+  #fire-count { font-size:11px; color:#aaa; }
+  #debug { font-size:10px; color:#ccc; margin-top:4px; word-break:break-all; }
+  .leaflet-popup-content-wrapper { border-radius:8px !important; box-shadow:0 4px 16px rgba(0,0,0,0.12) !important; padding:0 !important; border:1px solid #e8e8e8 !important; }
+  .leaflet-popup-content { margin:0 !important; }
+  .ddp-popup { padding:14px 16px; min-width:230px; }
+  .badge { display:inline-block; font-size:11px; font-weight:600; padding:3px 9px; border-radius:4px; margin-bottom:8px; }
+  .badge-sgi { background:#FAECE7; color:#993C1D; }
+  .badge-other { background:#E6F1FB; color:#185FA5; }
+  .badge-fire { background:#FCEBEB; color:#A32D2D; }
+  .ddp-popup h3 { font-size:14px; font-weight:600; color:#111; margin:0 0 3px; line-height:1.3; }
+  .ddp-popup .loc { font-size:12px; color:#888; margin:0 0 10px; }
+  .popup-table { width:100%; border-collapse:collapse; font-size:12px; }
+  .popup-table td { padding:3px 0; color:#444; vertical-align:top; }
+  .popup-table td:first-child { color:#999; width:38%; font-size:11px; padding-top:4px; }
+  .popup-contract { margin-top:10px; padding-top:8px; border-top:1px solid #f0f0f0; font-size:11px; color:#bbb; }
+  .fire-popup { padding:12px 14px; min-width:190px; }
+  .fire-popup h3 { font-size:13px; font-weight:600; color:#111; margin:0 0 8px; }
+  .sgi-label { background:transparent !important; border:none !important; box-shadow:none !important; font-size:11px !important; font-weight:700 !important; color:#993C1D !important; white-space:nowrap; }
+  .sgi-label::before { display:none !important; }
+  footer { background:#fff; border-top:1px solid #e0dfd8; padding:10px 20px; font-size:11px; color:#aaa; display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px; }
+  footer a { color:#888; text-decoration:none; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>MFSU Designated Dispatch Points — NFO 1202SC26B2100</h1>
+    <p>2026 Fire Season · 30 DDPs across 17 contractors · Live NIFC fire overlay</p>
+  </div>
+  <div>
+    <div id="status-pill">Loading fires…</div>
+    <div id="debug"></div>
+  </div>
+</header>
+<div id="map-wrap">
+  <div id="map"></div>
+  <div id="legend">
+    <h2>Legend</h2>
+    <div class="legend-row"><div class="dot dot-sgi"></div>SGI Global (MFSU A &amp; B)</div>
+    <div class="legend-row"><div class="dot dot-other"></div>Other MFSU DDPs</div>
+    <div class="legend-row"><div class="dot dot-fire"></div>Active fire (NIFC live)</div>
+    <hr />
+    <div id="fire-count">Fetching fire data…</div>
+  </div>
+</div>
+<footer>
+  <span>Fire data: <a href="https://data-nifc.opendata.arcgis.com/" target="_blank">NIFC WFIGS</a> · Updated continuously · Click any marker for details</span>
+  <span>Award data: USFS NFO 1202SC26B2100 · May 8, 2026</span>
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const DDPs = [
+  { company:"SGI Global, LLC", unit:"MFSU A", contract:"1202SC26K2114", city:"Billings", state:"MT", lat:45.7833, lng:-108.5007, dar:"$131,376", amr:"0.5%", tep:"$3,478,972", sgi:true },
+  { company:"SGI Global, LLC", unit:"MFSU B", contract:"1202SC26K2114", city:"Wenatchee", state:"WA", lat:47.4235, lng:-120.3103, dar:"$86,789", amr:"6.5%", tep:"$3,251,032", sgi:true },
+  { company:"Baseline Emergency Solutions LLC", unit:"Unit 4", contract:"1202SC26K2101", city:"Las Vegas", state:"NV", lat:36.1699, lng:-115.1398, dar:"$387,345", amr:"25.8%", tep:"$2,678,535", sgi:false },
+  { company:"Big Sky Mobile Catering", unit:"BSMC1", contract:"1202SC26K2102", city:"Missoula", state:"MT", lat:46.8787, lng:-113.9966, dar:"$141,569", amr:"1.2%", tep:"$3,057,502", sgi:false },
+  { company:"Big Sky Mobile Catering", unit:"BSMC2", contract:"1202SC26K2102", city:"Idaho Falls", state:"ID", lat:43.4917, lng:-112.0339, dar:"$141,569", amr:"0.7%", tep:"$3,092,185", sgi:false },
+  { company:"Big Sky Mobile Catering", unit:"BSMC3", contract:"1202SC26K2102", city:"Okanogan", state:"WA", lat:48.3600, lng:-119.5737, dar:"$141,569", amr:"1.9%", tep:"$3,071,389", sgi:false },
+  { company:"Big Sky Mobile Catering", unit:"BSMC4", contract:"1202SC26K2102", city:"Butte", state:"MT", lat:46.0038, lng:-112.5348, dar:"$141,569", amr:"1.2%", tep:"$3,060,669", sgi:false },
+  { company:"Bishop Services, Inc.", unit:"MFSU K-1", contract:"1202SC26K2103", city:"Lancaster", state:"CA", lat:34.6868, lng:-118.1542, dar:"$31,628", amr:"1.6%", tep:"$2,564,638", sgi:false },
+  { company:"Bishop Services, Inc.", unit:"MFSU K-4", contract:"1202SC26K2103", city:"Corona", state:"CA", lat:33.8753, lng:-117.5664, dar:"$31,628", amr:"1.6%", tep:"$2,564,638", sgi:false },
+  { company:"Cattlemen's Meat Company", unit:"Unit 3", contract:"1202SC26K2104", city:"Boise", state:"ID", lat:43.6150, lng:-116.2023, dar:"$95,820", amr:"24.6%", tep:"$2,828,073", sgi:false },
+  { company:"DF Zee's Fire Fighter Catering, LLC", unit:"DFZ-1", contract:"1202SC26K2105", city:"Bakersfield", state:"CA", lat:35.3733, lng:-119.0187, dar:"$190,500", amr:"9.7%", tep:"$2,749,075", sgi:false },
+  { company:"GFP Mobile Food Services, LLC", unit:"GFP K-5", contract:"1202SC26K2106", city:"Bend", state:"OR", lat:44.0582, lng:-121.3153, dar:"$56,542", amr:"2.0%", tep:"$3,234,716", sgi:false },
+  { company:"GFP Mobile Food Services, LLC", unit:"GFP K-6", contract:"1202SC26K2106", city:"Medford", state:"OR", lat:42.3265, lng:-122.8756, dar:"$56,542", amr:"2.0%", tep:"$3,234,716", sgi:false },
+  { company:"GFP Mobile Food Services, LLC", unit:"GFP K-7", contract:"1202SC26K2106", city:"Redding", state:"CA", lat:40.5865, lng:-122.3917, dar:"$56,542", amr:"2.0%", tep:"$2,932,921", sgi:false },
+  { company:"Hold The Line Catering, LLC", unit:"MFSU-1", contract:"1202SC26K2107", city:"Grand Junction", state:"CO", lat:39.0639, lng:-108.5506, dar:"$73,001", amr:"24.6%", tep:"$3,037,211", sgi:false },
+  { company:"Houstons Catering, Inc.", unit:"HCI", contract:"1202SC26K2108", city:"Kanab", state:"UT", lat:37.0474, lng:-112.5263, dar:"$0", amr:"0.0%", tep:"$3,350,059", sgi:false },
+  { company:"Houston's Too / Ridgeline", unit:"RL1", contract:"1202SC26K2109", city:"Salt Lake City", state:"UT", lat:40.7608, lng:-111.8910, dar:"$165,100", amr:"5.3%", tep:"$3,174,707", sgi:false },
+  { company:"Houston's Too / Ridgeline", unit:"RL2", contract:"1202SC26K2109", city:"Goldendale", state:"WA", lat:45.8218, lng:-120.8212, dar:"$127,000", amr:"11.8%", tep:"$2,956,507", sgi:false },
+  { company:"Houston's Too / Ridgeline", unit:"RL3", contract:"1202SC26K2109", city:"Elko", state:"NV", lat:40.8324, lng:-115.7630, dar:"$246,250", amr:"4.5%", tep:"$3,504,717", sgi:false },
+  { company:"North Slope Catering, LLC", unit:"NS K-1", contract:"1202SC26K2110", city:"Lakeview", state:"OR", lat:42.1887, lng:-120.3458, dar:"$125,000", amr:"21.7%", tep:"$2,931,300", sgi:false },
+  { company:"Nu-Way, Inc.", unit:"NWK-1", contract:"1202SC26K2111", city:"Lander", state:"WY", lat:42.8330, lng:-108.7304, dar:"$105,000", amr:"7.9%", tep:"$3,666,345", sgi:false },
+  { company:"R&G Food Services (Latitude Catering)", unit:"Unit 1", contract:"1202SC26K2112", city:"Tucson", state:"AZ", lat:32.2226, lng:-110.9747, dar:"$273,345", amr:"15.3%", tep:"$2,666,744", sgi:false },
+  { company:"R&G Food Services (Latitude Catering)", unit:"Unit 2", contract:"1202SC26K2112", city:"Farmington", state:"NM", lat:36.7281, lng:-108.2087, dar:"$333,009", amr:"3.7%", tep:"$3,041,563", sgi:false },
+  { company:"R&G Food Services (Latitude Catering)", unit:"Unit 3", contract:"1202SC26K2112", city:"Albuquerque", state:"NM", lat:35.0844, lng:-106.6504, dar:"$228,345", amr:"14.8%", tep:"$2,622,783", sgi:false },
+  { company:"Scofield Catering & Management, Inc.", unit:"SC-101", contract:"1202SC26K2113", city:"Santa Maria", state:"CA", lat:34.9530, lng:-120.4357, dar:"$365,170", amr:"1.0%", tep:"$3,080,373", sgi:false },
+  { company:"The Lake Group, Inc.", unit:"LGMK-1", contract:"1202SC26K2115", city:"Reno", state:"NV", lat:39.5296, lng:-119.8138, dar:"$4,293", amr:"12.6%", tep:"$2,434,792", sgi:false },
+  { company:"Thunder Mtn Catering, Inc.", unit:"TMC 101", contract:"1202SC26K2116", city:"Pendleton", state:"OR", lat:45.6721, lng:-118.7886, dar:"$105,000", amr:"0.0%", tep:"$2,686,600", sgi:false },
+  { company:"Thunder Mtn Catering, Inc.", unit:"TMC 201", contract:"1202SC26K2116", city:"Fresno", state:"CA", lat:36.7378, lng:-119.7871, dar:"$105,000", amr:"0.0%", tep:"$2,686,600", sgi:false },
+  { company:"Thunder Mtn Catering, Inc.", unit:"TMC 301", contract:"1202SC26K2116", city:"Flagstaff", state:"AZ", lat:35.1983, lng:-111.6513, dar:"$105,000", amr:"1.8%", tep:"$2,686,600", sgi:false },
+  { company:"Yellowstone Kellys, Inc.", unit:"YKC-1", contract:"1202SC26K2117", city:"Cody", state:"WY", lat:44.5263, lng:-109.0565, dar:"$349,000", amr:"0.0%", tep:"$3,695,820", sgi:false }
+];
+
+function ddpPopup(d) {
+  const bc = d.sgi ? 'badge-sgi' : 'badge-other';
+  return `<div class="ddp-popup">
+    <span class="badge ${bc}">${d.unit}${d.sgi ? ' · SGI Global' : ''}</span>
+    <h3>${d.company}</h3>
+    <p class="loc">${d.city}, ${d.state}</p>
+    <table class="popup-table">
+      <tr><td>DAR</td><td><strong>${d.dar}</strong></td></tr>
+      <tr><td>AMR</td><td>${d.amr}</td></tr>
+      <tr><td>TEP</td><td>${d.tep}</td></tr>
+    </table>
+    <p class="popup-contract">Contract: ${d.contract}</p>
+  </div>`;
+}
+
+const map = L.map('map', { center:[40.5,-112], zoom:5 });
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom:18
+}).addTo(map);
+
+DDPs.forEach(d => {
+  const m = L.circleMarker([d.lat, d.lng], {
+    radius: d.sgi ? 10 : 8,
+    fillColor: d.sgi ? '#D85A30' : '#185FA5',
+    color: d.sgi ? '#993C1D' : '#0C447C',
+    weight: d.sgi ? 3 : 2,
+    opacity:1, fillOpacity:0.9
+  }).addTo(map);
+  m.bindPopup(ddpPopup(d), { maxWidth:280, minWidth:230 });
+  if (d.sgi) {
+    m.bindTooltip(`<b>${d.unit}</b>`, {
+      permanent:true, direction:'top', className:'sgi-label', offset:[0,-14]
+    }).openTooltip();
+  }
+});
+
+const pill = document.getElementById('status-pill');
+const fcEl = document.getElementById('fire-count');
+const debugEl = document.getElementById('debug');
+
+function plotFires(data) {
+  const features = data.features || [];
+  let count = 0;
+  features.forEach(f => {
+    if (!f.geometry || f.geometry.type !== 'Point') return;
+    const [lng, lat] = f.geometry.coordinates;
+    const p = f.properties || {};
+    const name = p.IncidentName || 'Unnamed Fire';
+    const acres = p.GISAcres ? Math.round(p.GISAcres).toLocaleString() : '—';
+    const contained = p.PercentContained != null ? p.PercentContained + '%' : '—';
+    const state = p.POOState || '';
+    L.circleMarker([lat, lng], {
+      radius:5, fillColor:'#E24B4A', color:'#A32D2D',
+      weight:1, opacity:0.9, fillOpacity:0.65
+    }).addTo(map).bindPopup(`<div class="fire-popup">
+      <span class="badge badge-fire">Active Fire</span>
+      <h3>${name}${state ? ' · '+state : ''}</h3>
+      <table class="popup-table">
+        <tr><td>Acres</td><td><strong>${acres}</strong></td></tr>
+        <tr><td>Contained</td><td>${contained}</td></tr>
+      </table>
+    </div>`, { maxWidth:220 });
+    count++;
+  });
+  return count;
+}
+
+fetch('/api/fires')
+  .then(r => {
+    debugEl.textContent = 'HTTP ' + r.status;
+    return r.json();
+  })
+  .then(data => {
+    if (data.error) {
+      const msg = typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error));
+      throw new Error(msg);
+    }
+    const count = plotFires(data);
+    const label = count > 0 ? count + ' active fires (NIFC · live)' : 'No active fires right now';
+    fcEl.textContent = label;
+    pill.textContent = label;
+    pill.classList.add('loaded');
+  })
+  .catch(err => {
+    fcEl.textContent = 'Fire data unavailable';
+    pill.textContent = 'Fire data unavailable';
+    pill.classList.add('error');
+    debugEl.textContent = (debugEl.textContent || '') + ' ' + err.message;
+  });
+</script>
+</body>
+</html>
