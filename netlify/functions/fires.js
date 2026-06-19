@@ -1,5 +1,5 @@
 exports.handler = async function() {
-  const url = 'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query?f=geojson&where=1%3D1&outFields=IncidentName,GISAcres,PercentContained,POOState&returnGeometry=true&resultRecordCount=300';
+  const url = 'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson';
 
   try {
     const response = await fetch(url);
