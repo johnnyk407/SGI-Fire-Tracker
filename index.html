@@ -32,19 +32,22 @@
   .badge { display:inline-block; font-size:11px; font-weight:600; padding:3px 9px; border-radius:4px; margin-bottom:8px; }
   .badge-sgi { background:#FAECE7; color:#993C1D; }
   .badge-other { background:#E6F1FB; color:#185FA5; }
-  .badge-fire { background:#FCEBEB; color:#A32D2D; }
   .ddp-popup h3 { font-size:14px; font-weight:600; color:#111; margin:0 0 3px; line-height:1.3; }
   .ddp-popup .loc { font-size:12px; color:#888; margin:0 0 10px; }
   .popup-table { width:100%; border-collapse:collapse; font-size:12px; }
   .popup-table td { padding:3px 0; color:#444; vertical-align:top; }
-  .popup-table td:first-child { color:#999; width:38%; font-size:11px; padding-top:4px; }
+  .popup-table td:first-child { color:#999; width:42%; font-size:11px; padding-top:4px; }
   .popup-contract { margin-top:10px; padding-top:8px; border-top:1px solid #f0f0f0; font-size:11px; color:#bbb; }
-  .fire-popup { padding:12px 14px; min-width:190px; }
-  .fire-popup h3 { font-size:13px; font-weight:600; color:#111; margin:0 0 8px; }
   .sgi-label { background:transparent !important; border:none !important; box-shadow:none !important; font-size:11px !important; font-weight:700 !important; color:#993C1D !important; white-space:nowrap; }
   .sgi-label::before { display:none !important; }
   footer { background:#fff; border-top:1px solid #e0dfd8; padding:10px 20px; font-size:11px; color:#aaa; display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px; }
   footer a { color:#888; text-decoration:none; }
+
+  .fire-popup-wrapper .leaflet-popup-content-wrapper { padding:0 !important; overflow:hidden; }
+  .fire-popup-header { background:#185FA5; color:#fff; font-weight:600; font-size:13px; padding:10px 14px; }
+  .fire-popup-body { padding:12px 14px; }
+  .inciweb-btn { display:block; text-align:center; background:#185FA5; color:#fff; font-size:13px; font-weight:600; padding:8px; border-radius:6px; text-decoration:none; margin-top:10px; }
+  .inciweb-btn:hover { background:#0C447C; }
 </style>
 </head>
 <body>
@@ -150,6 +153,21 @@ const pill = document.getElementById('status-pill');
 const fcEl = document.getElementById('fire-count');
 const debugEl = document.getElementById('debug');
 
+function timeAgo(dateMs) {
+  if (!dateMs) return null;
+  const diff = Date.now() - dateMs;
+  const hrs = Math.floor(diff / 3600000);
+  const mins = Math.floor((diff % 3600000) / 60000);
+  if (hrs < 1) return mins + ' minute' + (mins !== 1 ? 's' : '') + ' ago';
+  if (hrs < 24) return hrs + ' hour' + (hrs !== 1 ? 's' : '') + ' ' + mins + ' minute' + (mins !== 1 ? 's' : '') + ' ago';
+  const days = Math.floor(hrs / 24);
+  return days + ' day' + (days !== 1 ? 's' : '') + ' ago';
+}
+
+function inciwebSlug(name) {
+  return name.toLowerCase().trim().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-');
+}
+
 function plotFires(data) {
   const features = data.features || [];
   let count = 0;
@@ -158,20 +176,28 @@ function plotFires(data) {
     const [lng, lat] = f.geometry.coordinates;
     const p = f.properties || {};
     const name = p.IncidentName || 'Unnamed Fire';
-    const acres = p.GISAcres ? Math.round(p.GISAcres).toLocaleString() : '—';
+    const acres = p.IncidentSize ? Math.round(p.IncidentSize).toLocaleString() + ' Acres' : '—';
     const contained = p.PercentContained != null ? p.PercentContained + '%' : '—';
-    const state = p.POOState || '';
+    const state = (p.POOState || '').replace('US-', '');
+    const updated = timeAgo(p.ICS209ReportDateTime) || timeAgo(p.ModifiedOnDateTime_dt);
+    const slug = inciwebSlug(name);
+    const inciwebUrl = 'https://inciweb.wildfire.gov/incident-information/' + slug;
+
     L.circleMarker([lat, lng], {
       radius:5, fillColor:'#E24B4A', color:'#A32D2D',
       weight:1, opacity:0.9, fillOpacity:0.65
     }).addTo(map).bindPopup(`<div class="fire-popup">
-      <span class="badge badge-fire">Active Fire</span>
-      <h3>${name}${state ? ' · '+state : ''}</h3>
-      <table class="popup-table">
-        <tr><td>Acres</td><td><strong>${acres}</strong></td></tr>
-        <tr><td>Contained</td><td>${contained}</td></tr>
-      </table>
-    </div>`, { maxWidth:220 });
+      <div class="fire-popup-header">${name}${state ? ' - ' + state : ''}</div>
+      <div class="fire-popup-body">
+        <table class="popup-table">
+          <tr><td>Incident Type</td><td>Wildfire</td></tr>
+          ${updated ? `<tr><td>Updated</td><td>${updated}</td></tr>` : ''}
+          <tr><td>Size</td><td>${acres}</td></tr>
+          <tr><td>Contained</td><td>${contained}</td></tr>
+        </table>
+        <a href="${inciwebUrl}" target="_blank" rel="noopener" class="inciweb-btn">Go to Incident »</a>
+      </div>
+    </div>`, { maxWidth:260, className:'fire-popup-wrapper' });
     count++;
   });
   return count;
