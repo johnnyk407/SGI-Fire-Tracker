@@ -164,8 +164,8 @@ function timeAgo(dateMs) {
   return days + ' day' + (days !== 1 ? 's' : '') + ' ago';
 }
 
-function inciwebSlug(name) {
-  return name.toLowerCase().trim().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-');
+function inciwebSearchUrl(name) {
+  return 'https://inciweb.wildfire.gov/search/node?keys=' + encodeURIComponent(name);
 }
 
 function plotFires(data) {
@@ -180,8 +180,9 @@ function plotFires(data) {
     const contained = p.PercentContained != null ? p.PercentContained + '%' : '—';
     const state = (p.POOState || '').replace('US-', '');
     const updated = timeAgo(p.ICS209ReportDateTime) || timeAgo(p.ModifiedOnDateTime_dt);
-    const slug = inciwebSlug(name);
-    const inciwebUrl = 'https://inciweb.wildfire.gov/incident-information/' + slug;
+
+    const inciwebUrl = p.InciWebUrl || inciwebSearchUrl(name);
+    const linkLabel = p.InciWebUrl ? 'Go to Incident »' : 'Search InciWeb »';
 
     L.circleMarker([lat, lng], {
       radius:5, fillColor:'#E24B4A', color:'#A32D2D',
@@ -195,7 +196,7 @@ function plotFires(data) {
           <tr><td>Size</td><td>${acres}</td></tr>
           <tr><td>Contained</td><td>${contained}</td></tr>
         </table>
-        <a href="${inciwebUrl}" target="_blank" rel="noopener" class="inciweb-btn">Go to Incident »</a>
+        <a href="${inciwebUrl}" target="_blank" rel="noopener" class="inciweb-btn">${linkLabel}</a>
       </div>
     </div>`, { maxWidth:260, className:'fire-popup-wrapper' });
     count++;
